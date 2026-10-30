@@ -88,6 +88,10 @@ button { color: inherit; }
 .workbench-action-dock .primary-button { min-height: 46px; flex: 0 0 auto; padding: 0 12px; font-size: var(--type-footnote); }
 .workbench-action-dock .primary-button svg { width: 14px; height: 14px; }
 .todo-draft-preview { padding: 0 15px 4px; }
+.workbench-todo-heading { display: flex; min-height: 52px; align-items: center; justify-content: space-between; gap: 8px; border-bottom: 1px solid var(--line); }
+.workbench-todo-heading .section-title { flex: 1 1 auto; }
+.workbench-todo-heading .section-title h2 { display: block; flex: 0 0 auto; white-space: nowrap; }
+.workbench-todo-heading .text-action { flex: 0 0 auto; }
 .todo-draft-preview.updated { border-color: var(--color-border); background: var(--color-canvas); }
 .todo-overview { display: flex; flex-wrap: wrap; gap: 6px 14px; padding: 10px 1px 2px; color: var(--color-text-muted); font-size: var(--type-footnote); }
 .todo-overview strong { color: var(--ink); font-size: var(--type-subheadline); }

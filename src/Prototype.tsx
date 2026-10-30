@@ -656,8 +656,9 @@ export default function Prototype() {
   const draftCarryOverCount = dailyTodoDrafts.filter((item) => item.carried).length;
   const todoDoneCount = todoItems.filter((item) => item.done).length;
   const todoPendingCount = todoItems.length - todoDoneCount;
+  const pendingTodoItems = todoItems.map((item, index) => ({ item, index })).filter(({ item }) => !item.done);
   const filteredTodoItems = todoItems.map((item, index) => ({ item, index })).filter(({ item }) => item.done === (todoStatusTab === "done"));
-  const visibleTodoItems = filteredTodoItems.slice(0, 3);
+  const visibleTodoItems = pendingTodoItems.slice(0, 3);
   const todoCarryOverCount = todoItems.filter((item) => item.carried && !item.done).length;
   const hasUnreadNotification = roleView === "store" && !notificationRead;
   const visibleCustomers = customerRows.filter((customer) => {
@@ -1165,16 +1166,16 @@ export default function Prototype() {
                   {businessState === "idle" && <div className="ai-empty">暂无经营建议</div>}
                 </section>
                 {!todoConfirmed && businessState === "success" && <section className="surface todo-draft-preview">
-                  <SectionHeading icon={<ActivityLogIcon />} title="待办" action={<button className="text-action" onClick={openTodos}>查看全部 <ChevronRightIcon /></button>} />
+                  <div className="workbench-todo-heading"><span className="section-title"><span className="section-icon"><ActivityLogIcon /></span><h2>待办</h2></span><button className="text-action" onClick={openTodos}>查看全部 <ChevronRightIcon /></button></div>
                   {dailyTodoDrafts.length > 0 && <div className="todo-overview"><span>待确认 <strong>{dailyTodoDrafts.length}</strong> 项</span>{draftCarryOverCount > 0 && <span>上周期延续 <strong>{draftCarryOverCount}</strong> 项</span>}</div>}
                   {visibleTodoDrafts.length ? visibleTodoDrafts.map((item, index) => <div className="todo-draft-row" key={`draft-${index}-${item.text}`}><span className="action-index">{String(index + 1).padStart(2, "0")}</span><div><strong>{item.text}</strong><span>{item.carried ? "上周期未完成 · 延续跟进" : roleView === "store" ? "建议负责人：门店负责人 · 本周期" : "建议负责人：集团/区域负责人 · 本周期"}</span></div></div>) : <p className="todo-draft-empty">当前诊断没有提取到明确行动建议。</p>}
                 </section>}
                 {todoConfirmed && <section className="surface action-card">
-                  <SectionHeading icon={<ActivityLogIcon />} title="待办" action={<button className="text-action" onClick={openTodos}>查看全部 <ChevronRightIcon /></button>} />
-                  <div className="todo-status-tabs" role="tablist" aria-label="待办状态"><button type="button" role="tab" aria-selected={todoStatusTab === "pending"} className={todoStatusTab === "pending" ? "active" : ""} onClick={() => setTodoStatusTab("pending")}><span>未完成 {todoPendingCount}</span></button><button type="button" role="tab" aria-selected={todoStatusTab === "done"} className={todoStatusTab === "done" ? "active" : ""} onClick={() => setTodoStatusTab("done")}><span>已完成 {todoDoneCount}</span></button></div>
+                  <div className="workbench-todo-heading"><span className="section-title"><span className="section-icon"><ActivityLogIcon /></span><h2>待办</h2></span><button className="text-action" onClick={openTodos}>查看全部 <ChevronRightIcon /></button></div>
+                  <div className="todo-overview"><span>未完成 <strong>{todoPendingCount}</strong> 项</span>{todoCarryOverCount > 0 && <span>上周期延续 <strong>{todoCarryOverCount}</strong> 项</span>}</div>
                   {todoCarryOverCount > 0 && <div className="todo-overview"><span>上周期延续 <strong>{todoCarryOverCount}</strong> 项</span></div>}
                   {visibleTodoItems.map(({ item, index: itemIndex }, index) => <div className={`action-item todo-item ${item.done ? "completed" : ""}`} key={`${itemIndex}-${item.text}`}><span className="action-index">{String(index + 1).padStart(2, "0")}</span><div><strong>{item.text}</strong>{item.carried && <span className="todo-carryover">上周期延续</span>}</div><button type="button" className={`todo-check ${item.done ? "done" : ""}`} aria-label={item.done ? `标记未完成：${item.text}` : `标记完成：${item.text}`} onClick={() => toggleTodo(itemIndex)}><CheckCircledIcon /></button></div>)}
-                  {!filteredTodoItems.length && <div className="todo-empty">{todoStatusTab === "pending" ? "暂无未完成待办" : "暂无已完成待办"}</div>}
+                  {!pendingTodoItems.length && <div className="todo-empty">暂无未完成待办</div>}
                 </section>}
                 {roleView === "store" && <section className="surface team-focus">
                   <SectionHeading icon={<GroupIcon />} title="门店团队分析" action={<button className="text-action" onClick={() => setScreen("market")}>全部员工 <ChevronRightIcon /></button>} />
