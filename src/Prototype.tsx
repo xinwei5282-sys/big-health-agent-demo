@@ -174,6 +174,12 @@ function extractStoreEmployeeActions(answer: string) {
   return Array.from(section.matchAll(/(?:^|\n)\s*(?:\d+[.、]|[一二三四五六七八九十]+[、.])\s*([^\n]+)/g), (match) => match[1].trim()).filter(Boolean);
 }
 
+function extractStoreEmployeeFocus(answer: string) {
+  const section = answer.match(/(?:待提升的问题|需要关注的问题)\s*[：:]?\s*([\s\S]*?)(?=\n\s*\n\s*(?:优先行动|下阶段目标|阶段目标)|$)/)?.[1] || "";
+  const focus = section.match(/(?:^|\n)\s*(?:\d+[.、]|[一二三四五六七八九十]+[、.])\s*([^\n]+)/)?.[1]?.trim() || "重点查看员工经营分析与提升建议。";
+  return focus.split(/(?:建议由|建议|需优先)/, 1)[0].replace(/[，,；;。\s]+$/, "").trim() || focus;
+}
+
 function loadDoneStoreTeamTodoIds() {
   try {
     const saved = JSON.parse(localStorage.getItem(storeTeamTodoSnapshotKey) || "null") as { datasetVersion?: string; doneIds?: string[] } | null;
@@ -708,7 +714,13 @@ export default function Prototype() {
   });
   const storeTeamTodoDoneCount = storeTeamTodoItems.filter((item) => item.done).length;
   const storeTeamTodoPendingItems = storeTeamTodoItems.filter((item) => !item.done);
-  const visibleStoreTeamTodos = storeTeamTodoPendingItems.slice(0, 3);
+  const storeTeamTodoGroups = storeEmployeeRecords.map((employee) => ({
+    employee,
+    items: storeTeamTodoPendingItems.filter((item) => item.employeeId === employee.id),
+    focus: extractStoreEmployeeFocus(storeEmployeeAnalysisSnapshots[employee.id]?.answer || ""),
+  })).filter((group) => group.items.length > 0)
+    .sort((a, b) => b.items.length - a.items.length || a.employee.salesProgressPercent - b.employee.salesProgressPercent);
+  const visibleStoreTeamTodoGroups = storeTeamTodoGroups.slice(0, 3);
   const filteredStoreTeamTodos = storeTeamTodoItems.filter((item) => item.done === (todoStatusTab === "done"));
   const filteredStoreTeamTodoGroups = storeEmployeeRecords.map((employee) => ({ employee, items: filteredStoreTeamTodos.filter((item) => item.employeeId === employee.id) })).filter((group) => group.items.length > 0);
   const storeTeamTodoProgressPercent = storeTeamTodoItems.length ? Math.round(storeTeamTodoDoneCount / storeTeamTodoItems.length * 100) : 0;
@@ -1225,22 +1237,31 @@ export default function Prototype() {
                   {businessState === "idle" && <div className="ai-empty">暂无经营建议</div>}
                 </section>
                 {!todoConfirmed && businessState === "success" && <section className="surface todo-draft-preview">
-                  <div className="workbench-todo-heading"><span className="section-title"><span className="section-icon"><ActivityLogIcon /></span><h2>待办</h2></span><button className="text-action" onClick={openTodos}>查看全部 <ChevronRightIcon /></button></div>
+                  <div className="workbench-todo-heading"><span className="section-title"><span className="section-icon"><ActivityLogIcon /></span><h2>{roleView === "store" ? "经营待办" : "待办"}</h2></span><button className="text-action" onClick={openTodos}>查看全部 <ChevronRightIcon /></button></div>
                   {draftCarryOverCount > 0 && <div className="todo-overview"><span>上周期延续 <strong>{draftCarryOverCount}</strong> 项</span></div>}
                   {visibleTodoDrafts.length ? visibleTodoDrafts.map((item, index) => <div className="todo-draft-row" key={`draft-${index}-${item.text}`}><span className="action-index">{String(index + 1).padStart(2, "0")}</span><div><strong>{item.title}</strong><span className="todo-description">{item.text}</span><span className="todo-row-meta">{item.carried ? "上周期未完成 · 延续跟进" : roleView === "store" ? "建议负责人：门店负责人 · 本周期" : "建议负责人：集团/区域负责人 · 本周期"}</span></div></div>) : <p className="todo-draft-empty">当前诊断没有提取到明确行动建议。</p>}
                 </section>}
                 {todoConfirmed && <section className="surface action-card">
-                  <div className="workbench-todo-heading"><span className="section-title"><span className="section-icon"><ActivityLogIcon /></span><h2>待办</h2></span><button className="text-action" onClick={openTodos}>查看全部 <ChevronRightIcon /></button></div>
+                  <div className="workbench-todo-heading"><span className="section-title"><span className="section-icon"><ActivityLogIcon /></span><h2>{roleView === "store" ? "经营待办" : "待办"}</h2></span><button className="text-action" onClick={openTodos}>查看全部 <ChevronRightIcon /></button></div>
                   {todoCarryOverCount > 0 && <div className="todo-overview"><span>上周期延续 <strong>{todoCarryOverCount}</strong> 项</span></div>}
                   {todoCarryOverCount > 0 && <div className="todo-overview"><span>上周期延续 <strong>{todoCarryOverCount}</strong> 项</span></div>}
                   {visibleTodoItems.map(({ item, index: itemIndex }, index) => <div className={`action-item todo-item ${item.done ? "completed" : ""}`} key={`${itemIndex}-${item.text}`}><span className="action-index">{String(index + 1).padStart(2, "0")}</span><div className="todo-item-copy"><strong>{item.title}</strong><span>{item.text}</span>{item.carried && <small className="todo-carryover">上周期延续</small>}</div><button type="button" className={`todo-check ${item.done ? "done" : ""}`} aria-label={item.done ? `标记未完成：${item.title}` : `标记完成：${item.title}`} onClick={() => toggleTodo(itemIndex)}><CheckCircledIcon /></button></div>)}
                   {!pendingTodoItems.length && <div className="todo-empty">暂无未完成待办</div>}
                 </section>}
                 {roleView === "store" && <section className="surface team-todo-preview">
-                  <div className="workbench-todo-heading"><span className="section-title"><span className="section-icon"><GroupIcon /></span><h2>团队待办</h2></span><button className="text-action" onClick={openTeamTodos}>查看全部 <ChevronRightIcon /></button></div>
-                  <div className="team-todo-overview"><span>{new Set(storeTeamTodoItems.map((item) => item.employeeId)).size} 位员工</span><span>{storeTeamTodoItems.length} 项行动建议</span></div>
-                  {visibleStoreTeamTodos.map((item, index) => <article className="team-todo-row" key={item.id}><span className="action-index">{String(index + 1).padStart(2, "0")}</span><div className="team-todo-copy"><button type="button" className="team-todo-employee" onClick={() => { const employee = storeEmployeeRecords.find((record) => record.id === item.employeeId); if (employee) openStoreEmployee(employee, "workbench"); }}>{item.employeeName}<span>{item.position}</span><ChevronRightIcon /></button><strong>{item.title}</strong><span>{item.text}</span></div><button type="button" className="todo-check" aria-label={`标记完成：${item.employeeName}，${item.title}`} onClick={() => toggleStoreTeamTodo(item.id)}><CheckCircledIcon /></button></article>)}
-                  {!visibleStoreTeamTodos.length && <div className="todo-empty"><strong>团队待办已全部完成</strong><span>完成进度和员工行动记录可在查看全部中复盘。</span></div>}
+                  <div className="workbench-todo-heading"><span className="section-title"><span className="section-icon"><GroupIcon /></span><h2>员工辅导待办</h2></span><button className="text-action" onClick={openTeamTodos}>查看全部 <ChevronRightIcon /></button></div>
+                  <div className="team-todo-overview"><span>{storeTeamTodoGroups.length} 位员工待跟进</span><span><b>{storeTeamTodoPendingItems.length}</b> 项未完成</span><span><b>{storeTeamTodoDoneCount}</b> 项已完成</span></div>
+                  {visibleStoreTeamTodoGroups.map(({ employee, items, focus }, index) => {
+                    const action = items[0];
+                    return <article className="store-team-coaching-card" key={employee.id}>
+                      <div className="store-team-coaching-head"><span className="avatar">{employee.name.slice(0, 1)}</span><div><button type="button" className="team-todo-group-name" onClick={() => openStoreEmployee(employee, "workbench")}>{employee.name}<ChevronRightIcon /></button><span>{employee.position} · 目标完成 {employee.salesProgressPercent}%</span></div><span className="store-team-pending-badge">{items.length} 项待办</span></div>
+                      <div className="store-team-coaching-metrics"><span>待回访 <b>{employee.callbackPending}</b></span><span>方案待跟进 <b>{employee.healthPlansDue}</b></span></div>
+                      <div className="store-team-ai-focus"><span>AI 关注</span><p>{focus}</p></div>
+                      {action && <div className="store-team-primary-action"><span className="action-index">{String(index + 1).padStart(2, "0")}</span><div><strong>{action.title}</strong><p>{action.text}</p></div><button type="button" className="todo-check" aria-label={`标记完成：${employee.name}，${action.title}`} onClick={() => toggleStoreTeamTodo(action.id)}><CheckCircledIcon /></button></div>}
+                      {items.length > 1 && <button type="button" className="store-team-more-actions" onClick={openTeamTodos}>另有 {items.length - 1} 项，查看全部员工待办 <ChevronRightIcon /></button>}
+                    </article>;
+                  })}
+                  {!visibleStoreTeamTodoGroups.length && <div className="todo-empty"><strong>{storeTeamTodoItems.length ? "员工待办已全部完成" : "暂无员工 AI 行动建议"}</strong><span>{storeTeamTodoItems.length ? "可在查看全部中复盘已完成的辅导行动。" : "员工生成经营分析后，针对性行动会显示在这里。"}</span></div>}
                 </section>}
                 {roleView === "group" && <section className="surface team-focus">
                   <SectionHeading icon={<GroupIcon />} title="团队经营重点" action={<button className="text-action" onClick={() => { setMarketMode("teams"); setScreen("market"); }}>全部团队 <ChevronRightIcon /></button>} />
