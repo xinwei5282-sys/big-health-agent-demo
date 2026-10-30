@@ -66,7 +66,7 @@ type Screen = "home" | "workbench" | "todos" | "customers" | "customer-detail" |
 type AiState = "idle" | "loading" | "success" | "error";
 type RoleView = "store" | "group";
 type ProductFollowupKey = "low-stock" | "slow-moving";
-type DailyTodoItem = { text: string; done: boolean; carried: boolean };
+type DailyTodoItem = { title: string; text: string; done: boolean; carried: boolean };
 type DailyTodoSnapshot = { date: string; items: DailyTodoItem[]; diagnosisVersion?: string };
 type BatchPlan = { customer: string; focus: string; content: string };
 type SingleHealthPlanSnapshot = BatchPlan & { datasetVersion: string; updatedAt: string };
@@ -153,12 +153,27 @@ function loadStoreEmployeeAnalysisSnapshots(): Record<string, { answer: string; 
   } catch { return seeded; }
 }
 
+function makeTodoTitle(text: string) {
+  const explicit = text.match(/(?:待办标题|标题)[：:]\s*([^，,。；;]{2,20})/);
+  if (explicit) return explicit[1].trim();
+  const actionVerbs = "核对|核查|检查|回访|梳理|完成|联系|跟进|确认|提升|补充|排查|复盘|推动|分析|调整|整理|定位|输出|建立|制定|筛选|召回";
+  const candidate = text.trim()
+    .replace(new RegExp(`^建议由[^，,]{1,16}?(?=${actionVerbs})`), "")
+    .replace(/^(?:建议|优先|首先|请)\s*/, "")
+    .split(/[，,。；;：:]/, 1)[0]
+    .split(/(?:以及|同时|并且|或)/, 1)[0]
+    .trim();
+  const title = Array.from(candidate).slice(0, 18).join("").replace(/[，,、:：\s]+$/, "");
+  return title || "经营跟进事项";
+}
+
 function loadDailyTodoSnapshots(): Partial<Record<RoleView, DailyTodoSnapshot>> {
   try {
     const snapshots = JSON.parse(localStorage.getItem(dailyTodoSnapshotKey) || "{}") as Partial<Record<RoleView, DailyTodoSnapshot>>;
     const currentSnapshots = loadBusinessSnapshots();
     for (const view of ["store", "group"] as const) {
       if (snapshots[view]?.diagnosisVersion !== currentSnapshots[view].version) delete snapshots[view];
+      else if (snapshots[view]) snapshots[view]!.items = snapshots[view]!.items.map((item) => ({ ...item, title: item.title || makeTodoTitle(item.text) }));
     }
     return snapshots;
   } catch {
@@ -644,7 +659,7 @@ export default function Prototype() {
   const carryOverDrafts: DailyTodoItem[] = previousTodoSnapshot?.date !== todayKey
     ? (previousTodoSnapshot?.items || []).filter((item) => !item.done).map((item) => ({ ...item, carried: true }))
     : [];
-  const freshDrafts: DailyTodoItem[] = extractBusinessActions(businessAnswer).map((text) => ({ text, done: false, carried: false }));
+  const freshDrafts: DailyTodoItem[] = extractBusinessActions(businessAnswer).map((text) => ({ title: makeTodoTitle(text), text, done: false, carried: false }));
   const draftKeys = new Set<string>();
   const dailyTodoDrafts = [...carryOverDrafts, ...freshDrafts].filter((item) => {
     const key = item.text.toLocaleLowerCase().replace(/\s+/g, "");
@@ -788,7 +803,7 @@ export default function Prototype() {
       const existingToday = todoSnapshots[roleView];
       if (todoConfirmed && existingToday?.date === todayKey) {
         const completedItems = existingToday.items.filter((item) => item.done);
-        const refreshedItems = extractBusinessActions(text).slice(0, 5).map((action) => ({ text: action, done: false, carried: false }));
+        const refreshedItems = extractBusinessActions(text).slice(0, 5).map((action) => ({ title: makeTodoTitle(action), text: action, done: false, carried: false }));
         if (refreshedItems.length) {
           const seen = new Set<string>();
           const mergedItems = [...completedItems, ...refreshedItems].filter((item) => {
@@ -1167,19 +1182,18 @@ export default function Prototype() {
                 </section>
                 {!todoConfirmed && businessState === "success" && <section className="surface todo-draft-preview">
                   <div className="workbench-todo-heading"><span className="section-title"><span className="section-icon"><ActivityLogIcon /></span><h2>待办</h2></span><button className="text-action" onClick={openTodos}>查看全部 <ChevronRightIcon /></button></div>
-                  {dailyTodoDrafts.length > 0 && <div className="todo-overview"><span>待确认 <strong>{dailyTodoDrafts.length}</strong> 项</span>{draftCarryOverCount > 0 && <span>上周期延续 <strong>{draftCarryOverCount}</strong> 项</span>}</div>}
-                  {visibleTodoDrafts.length ? visibleTodoDrafts.map((item, index) => <div className="todo-draft-row" key={`draft-${index}-${item.text}`}><span className="action-index">{String(index + 1).padStart(2, "0")}</span><div><strong>{item.text}</strong><span>{item.carried ? "上周期未完成 · 延续跟进" : roleView === "store" ? "建议负责人：门店负责人 · 本周期" : "建议负责人：集团/区域负责人 · 本周期"}</span></div></div>) : <p className="todo-draft-empty">当前诊断没有提取到明确行动建议。</p>}
+                  {draftCarryOverCount > 0 && <div className="todo-overview"><span>上周期延续 <strong>{draftCarryOverCount}</strong> 项</span></div>}
+                  {visibleTodoDrafts.length ? visibleTodoDrafts.map((item, index) => <div className="todo-draft-row" key={`draft-${index}-${item.text}`}><span className="action-index">{String(index + 1).padStart(2, "0")}</span><div><strong>{item.title}</strong><span className="todo-description">{item.text}</span><span className="todo-row-meta">{item.carried ? "上周期未完成 · 延续跟进" : roleView === "store" ? "建议负责人：门店负责人 · 本周期" : "建议负责人：集团/区域负责人 · 本周期"}</span></div></div>) : <p className="todo-draft-empty">当前诊断没有提取到明确行动建议。</p>}
                 </section>}
                 {todoConfirmed && <section className="surface action-card">
                   <div className="workbench-todo-heading"><span className="section-title"><span className="section-icon"><ActivityLogIcon /></span><h2>待办</h2></span><button className="text-action" onClick={openTodos}>查看全部 <ChevronRightIcon /></button></div>
-                  <div className="todo-overview"><span>未完成 <strong>{todoPendingCount}</strong> 项</span>{todoCarryOverCount > 0 && <span>上周期延续 <strong>{todoCarryOverCount}</strong> 项</span>}</div>
                   {todoCarryOverCount > 0 && <div className="todo-overview"><span>上周期延续 <strong>{todoCarryOverCount}</strong> 项</span></div>}
-                  {visibleTodoItems.map(({ item, index: itemIndex }, index) => <div className={`action-item todo-item ${item.done ? "completed" : ""}`} key={`${itemIndex}-${item.text}`}><span className="action-index">{String(index + 1).padStart(2, "0")}</span><div><strong>{item.text}</strong>{item.carried && <span className="todo-carryover">上周期延续</span>}</div><button type="button" className={`todo-check ${item.done ? "done" : ""}`} aria-label={item.done ? `标记未完成：${item.text}` : `标记完成：${item.text}`} onClick={() => toggleTodo(itemIndex)}><CheckCircledIcon /></button></div>)}
+                  {todoCarryOverCount > 0 && <div className="todo-overview"><span>上周期延续 <strong>{todoCarryOverCount}</strong> 项</span></div>}
+                  {visibleTodoItems.map(({ item, index: itemIndex }, index) => <div className={`action-item todo-item ${item.done ? "completed" : ""}`} key={`${itemIndex}-${item.text}`}><span className="action-index">{String(index + 1).padStart(2, "0")}</span><div className="todo-item-copy"><strong>{item.title}</strong><span>{item.text}</span>{item.carried && <small className="todo-carryover">上周期延续</small>}</div><button type="button" className={`todo-check ${item.done ? "done" : ""}`} aria-label={item.done ? `标记未完成：${item.title}` : `标记完成：${item.title}`} onClick={() => toggleTodo(itemIndex)}><CheckCircledIcon /></button></div>)}
                   {!pendingTodoItems.length && <div className="todo-empty">暂无未完成待办</div>}
                 </section>}
                 {roleView === "store" && <section className="surface team-focus">
                   <SectionHeading icon={<GroupIcon />} title="门店团队分析" action={<button className="text-action" onClick={() => setScreen("market")}>全部员工 <ChevronRightIcon /></button>} />
-                  <p className="team-focus-helper">按员工销售目标、顾客回访和方案跟进识别本期辅导重点。</p>
                   <div className="store-employee-summary"><span>{storeEmployeeTeamSummary.employees} 位员工</span><b>{formatTeamMoney(storeEmployeeTeamSummary.salesYuan)} / {formatTeamMoney(storeEmployeeTeamSummary.targetYuan)}</b><small>销售额 / 目标 · {storeEmployeeTeamSummary.callbacksPending} 项回访待跟进</small></div>
                   {[...storeEmployeeRecords].sort((a, b) => a.salesProgressPercent - b.salesProgressPercent).slice(0, 2).map((employee) => <button type="button" className="team-focus-row" key={employee.id} onClick={() => openStoreEmployee(employee, "workbench")}><span className="avatar">{employee.name.slice(0, 1)}</span><span className="team-focus-copy"><strong>{employee.name}<small>{employee.position}</small></strong><span>{employee.orderCount} 笔订单 · {employee.callbackPending} 项回访待跟进</span></span><span className="team-focus-score"><strong>{employee.salesProgressPercent}%</strong><small>目标完成</small></span><ChevronRightIcon /></button>)}
                 </section>}
@@ -1255,7 +1269,7 @@ export default function Prototype() {
           {screen === "todos" && (
             <div className={`page-stack subpage-stack ${!todoConfirmed ? "workbench-stack" : ""}`}>
               <SubpageHeader title="全部待办" subtitle={todoConfirmed ? `${todayKey.slice(5).replace("-", "/")} · 共 ${todoItems.length} 项` : `本期诊断建议 · ${dailyTodoDrafts.length} 项待确认`} onBack={() => setScreen("workbench")} />
-              {todoConfirmed ? <section className="surface action-card"><div className="todo-status-tabs" role="tablist" aria-label="待办状态"><button type="button" role="tab" aria-selected={todoStatusTab === "pending"} className={todoStatusTab === "pending" ? "active" : ""} onClick={() => setTodoStatusTab("pending")}><span>未完成 {todoPendingCount}</span></button><button type="button" role="tab" aria-selected={todoStatusTab === "done"} className={todoStatusTab === "done" ? "active" : ""} onClick={() => setTodoStatusTab("done")}><span>已完成 {todoDoneCount}</span></button></div>{todoCarryOverCount > 0 && <div className="todo-overview"><span>上周期延续 <strong>{todoCarryOverCount}</strong> 项</span></div>}{filteredTodoItems.map(({ item, index }, rowIndex) => <div className={`action-item todo-item ${item.done ? "completed" : ""}`} key={`${index}-${item.text}`}><span className="action-index">{String(rowIndex + 1).padStart(2, "0")}</span><div><strong>{item.text}</strong>{item.carried && <span className="todo-carryover">上周期延续</span>}</div><button type="button" className={`todo-check ${item.done ? "done" : ""}`} aria-label={item.done ? `标记未完成：${item.text}` : `标记完成：${item.text}`} onClick={() => toggleTodo(index)}><CheckCircledIcon /></button></div>)}{!filteredTodoItems.length && <div className="todo-empty">暂无{todoStatusTab === "pending" ? "未完成" : "已完成"}待办</div>}</section> : <section className="surface todo-draft-preview"><SectionHeading icon={<ActivityLogIcon />} title="本期诊断行动建议" action={<span className="draft-source-pill">待确认</span>} />{dailyTodoDrafts.map((item, index) => <div className="todo-draft-row" key={`all-draft-${index}-${item.text}`}><span className="action-index">{String(index + 1).padStart(2, "0")}</span><div><strong>{item.text}</strong><span>{item.carried ? "上周期未完成 · 延续跟进" : roleView === "store" ? "建议负责人：门店负责人 · 本周期" : "建议负责人：集团/区域负责人 · 本周期"}</span></div></div>)}</section>}
+              {todoConfirmed ? <section className="surface action-card"><div className="todo-status-tabs" role="tablist" aria-label="待办状态"><button type="button" role="tab" aria-selected={todoStatusTab === "pending"} className={todoStatusTab === "pending" ? "active" : ""} onClick={() => setTodoStatusTab("pending")}><span>未完成 {todoPendingCount}</span></button><button type="button" role="tab" aria-selected={todoStatusTab === "done"} className={todoStatusTab === "done" ? "active" : ""} onClick={() => setTodoStatusTab("done")}><span>已完成 {todoDoneCount}</span></button></div>{todoCarryOverCount > 0 && <div className="todo-overview"><span>上周期延续 <strong>{todoCarryOverCount}</strong> 项</span></div>}{filteredTodoItems.map(({ item, index }, rowIndex) => <div className={`action-item todo-item ${item.done ? "completed" : ""}`} key={`${index}-${item.text}`}><span className="action-index">{String(rowIndex + 1).padStart(2, "0")}</span><div className="todo-item-copy"><strong>{item.title}</strong><span>{item.text}</span>{item.carried && <small className="todo-carryover">上周期延续</small>}</div><button type="button" className={`todo-check ${item.done ? "done" : ""}`} aria-label={item.done ? `标记未完成：${item.title}` : `标记完成：${item.title}`} onClick={() => toggleTodo(index)}><CheckCircledIcon /></button></div>)}{!filteredTodoItems.length && <div className="todo-empty">暂无{todoStatusTab === "pending" ? "未完成" : "已完成"}待办</div>}</section> : <section className="surface todo-draft-preview"><SectionHeading icon={<ActivityLogIcon />} title="本期诊断行动建议" action={<span className="draft-source-pill">待确认</span>} />{dailyTodoDrafts.map((item, index) => <div className="todo-draft-row" key={`all-draft-${index}-${item.text}`}><span className="action-index">{String(index + 1).padStart(2, "0")}</span><div><strong>{item.title}</strong><span className="todo-description">{item.text}</span><span className="todo-row-meta">{item.carried ? "上周期未完成 · 延续跟进" : roleView === "store" ? "建议负责人：门店负责人 · 本周期" : "建议负责人：集团/区域负责人 · 本周期"}</span></div></div>)}</section>}
             </div>
           )}
 

@@ -107,8 +107,9 @@ button { color: inherit; }
 .todo-draft-row { display: grid; grid-template-columns: 27px minmax(0,1fr); align-items: start; gap: 8px; padding: 12px 0; border-bottom: 1px solid var(--color-border); }
 .todo-draft-row:last-of-type { border-bottom: 0; }
 .todo-draft-row > div { display: grid; gap: 5px; }
-.todo-draft-row strong { color: var(--ink); font-size: var(--type-subheadline); line-height: 1.55; }
-.todo-draft-row > div > span { color: var(--color-text-muted); font-size: var(--type-footnote); }
+.todo-draft-row strong { color: var(--ink-deep); font-size: var(--type-body); font-weight: 680; line-height: 1.45; }
+.todo-draft-row .todo-description { color: var(--color-text-secondary); font-size: var(--type-body); font-weight: 400; line-height: 1.5; }
+.todo-draft-row .todo-row-meta { color: var(--color-text-muted); font-size: var(--type-footnote); }
 .todo-draft-empty { padding: 12px 0; color: var(--color-text-muted); font-size: var(--type-subheadline); }
 .diagnosis-summary-card { display: grid; width: 100%; gap: 9px; margin-top: 14px; padding: 13px 1px 0; border: 0; border-top: 1px solid var(--color-brand-border); border-radius: 0; background: transparent; color: inherit; text-align: left; cursor: pointer; }
 .diagnosis-summary-card p { display: -webkit-box; overflow: hidden; margin: 0; color: var(--color-brand-strong); font-size: var(--type-body); font-weight: 560; line-height: 1.65; white-space: normal; -webkit-box-orient: vertical; -webkit-line-clamp: 3; }
@@ -643,6 +644,10 @@ button { color: inherit; }
 .nav-item.active small { font-weight: 700; }
 .icon-button { width: 44px; height: 44px; }
 .todo-item { grid-template-columns: 27px minmax(0,1fr) 44px; }
+.todo-item-copy { display: grid; min-width: 0; gap: 4px; }
+.todo-item-copy > strong { color: var(--color-text); font-size: var(--type-body); font-weight: 680; line-height: 1.45; }
+.todo-item-copy > span { color: var(--color-text-secondary); font-size: var(--type-body); font-weight: 400; line-height: 1.5; }
+.todo-item-copy > small { justify-self: start; }
 .todo-check { width: 44px; height: 44px; }
 .todo-status-tabs button,.lipid-metric-picker button { min-height: 44px; }
 .device-screen button { transition: color .16s ease, background-color .16s ease, border-color .16s ease, transform .12s ease; }
@@ -668,7 +673,6 @@ button { color: inherit; }
 .todo-status-tabs button:last-child.active > span { border-radius: 0 9px 9px 0; }
 .todo-status-tabs button:active { transform: none; }
 .customer-heading strong { color: var(--color-brand); font-size: var(--type-body); font-weight: 600; line-height: 1.5; }
-.todo-draft-row strong,.todo-item strong { color: var(--color-text-secondary); font-size: var(--type-body); font-weight: 500; line-height: 1.5; }
 .todo-item.completed strong { color: var(--color-text-muted); }
 .device-screen button:not(.customer-card):not(.todo-check):not(.icon-button) { font-size: var(--type-body); }
 
