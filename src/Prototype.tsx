@@ -1553,8 +1553,8 @@ export default function Prototype() {
         <NavItem active={tab === "workbench"} name="workbench" label="工作台" onClick={() => setScreen("workbench")} />
         <NavItem active={tab === "home"} name="home" label="看板" onClick={() => setScreen("home")} />
         {roleView === "store" && <NavItem active={tab === "customers"} name="customers" label="顾客" onClick={() => setScreen("customers")} />}
-        {roleView === "store" && <NavItem active={tab === "market"} name="customers" label="市场" onClick={() => setScreen("market")} />}
-        {roleView === "group" && <NavItem active={tab === "market"} name="customers" label="市场" onClick={() => { keyboard.hide(); setMarketMode("teams"); setScreen("market"); }} />}
+        {roleView === "store" && <NavItem active={tab === "market"} name="market" label="市场" onClick={() => setScreen("market")} />}
+        {roleView === "group" && <NavItem active={tab === "market"} name="market" label="市场" onClick={() => { keyboard.hide(); setMarketMode("teams"); setScreen("market"); }} />}
         <NavItem active={tab === "mine"} name="mine" label="我的" onClick={() => setScreen("mine")} />
       </nav>
       <BottomSheet open={dashboardMonthOpen} onOpenChange={setDashboardMonthOpen} title="选择统计月份" description="选择月份查看经营数据" snap={0.62}>
@@ -1654,15 +1654,16 @@ export default function Prototype() {
   );
 }
 
-type FilledTabIconName = "workbench" | "home" | "customers" | "mine";
+type FilledTabIconName = "workbench" | "home" | "customers" | "market" | "mine";
 
 function FilledTabIcon({ name, active }: { name: FilledTabIconName; active: boolean }) {
   const shapeFill = active ? "currentColor" : "none";
-  const detailStroke = active && name === "workbench" ? "var(--color-surface)" : "currentColor";
+  const detailStroke = active && (name === "workbench" || name === "market") ? "var(--color-surface)" : "currentColor";
   const paths: Record<FilledTabIconName, ReactNode> = {
     workbench: <><rect x="5" y="3.5" width="14" height="17" rx="2" fill={shapeFill} /><path d="m8 9 1.2 1.2L11.5 8m1.5 1.5h3m-8 4.5 1.2 1.2 2.8-3m1.5 1.5h3" fill="none" stroke={detailStroke} strokeLinecap="round" strokeLinejoin="round" /></>,
     home: <><rect x="3.5" y="3.5" width="7.5" height="7.5" rx="1.4" fill={shapeFill} /><rect x="13" y="3.5" width="7.5" height="7.5" rx="1.4" fill={shapeFill} /><rect x="3.5" y="13" width="7.5" height="7.5" rx="1.4" fill={shapeFill} /><rect x="13" y="13" width="7.5" height="7.5" rx="1.4" fill={shapeFill} /></>,
     customers: <><circle cx="9" cy="8" r="3" fill={shapeFill} /><circle cx="17" cy="9" r="2.5" fill={shapeFill} /><path d="M3 20a6 6 0 0 1 12 0v.5H3V20Zm12-4a5 5 0 0 1 6 4.5h-4.5A7.5 7.5 0 0 0 15 16Z" fill={shapeFill} /></>,
+    market: <><path d="M4.5 9.5h15v11h-15z" fill={shapeFill} /><path d="m3.5 9 1.9-5h13.2l1.9 5M3.5 9c.2 1.7 1 2.5 2.3 2.5S8 10.7 8 9c.2 1.7 1 2.5 2.4 2.5s2.3-.8 2.3-2.5.9 2.5 2.3 2.5 2.3-.8 2.5-2.5c.2 1.7 1 2.5 2.3 2.5s2.1-.8 2.2-2.5" fill="none" /><path d="M9 20.5v-5.8h6v5.8m-8.5-6h.1" fill="none" stroke={detailStroke} /></>,
     mine: <><circle cx="12" cy="8" r="3.4" fill={shapeFill} /><path d="M4.5 20a7.5 7.5 0 0 1 15 0v1h-15v-1Z" fill={shapeFill} /></>,
   };
   return <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">{paths[name]}</svg>;
