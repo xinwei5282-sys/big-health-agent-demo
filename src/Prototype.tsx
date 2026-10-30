@@ -436,6 +436,12 @@ function getTeamFollowup(team: ManagedTeam) {
     nextDeadline: pending.map((task) => task.deadline).sort().at(0) || "",
   };
 }
+function getTeamFocusMember(team: ManagedTeam) {
+  return team.memberNames
+    .map((name) => teamRows.find((member) => member.name === name))
+    .filter((member): member is (typeof teamRows)[number] => Boolean(member))
+    .sort((a, b) => Number(memberDevelopment[a.name]?.active) - Number(memberDevelopment[b.name]?.active) || a.progress - b.progress)[0];
+}
 function getPriorityTeamFollowups(teams: ManagedTeam[]) {
   return teams.map((team) => ({ team, stats: getTeamStats(team), followup: getTeamFollowup(team) }))
     .filter((item) => item.followup.pendingCount > 0 || item.stats.active < item.team.memberNames.length)
@@ -580,7 +586,7 @@ export default function Prototype() {
   const [teamSearch, setTeamSearch] = useState("");
   const [selectedTeamId, setSelectedTeamId] = useState<string | null>(null);
   const [teamDetailTab, setTeamDetailTab] = useState<"overview" | "performance" | "execution" | "settlement" | "partners">("overview");
-  const [memberReturnScreen, setMemberReturnScreen] = useState<"team-detail" | "team" | "market">("team");
+  const [memberReturnScreen, setMemberReturnScreen] = useState<"workbench" | "team-detail" | "team" | "market">("team");
   const selectedTeam = managedTeams.find((team) => team.id === selectedTeamId);
   const priorityTeamFollowups = getPriorityTeamFollowups(managedTeams);
   const visibleTeams = managedTeams.filter((team) => `${team.name} ${team.leader} ${team.memberNames.join(" ")}`.includes(teamSearch.trim()));
@@ -751,7 +757,7 @@ export default function Prototype() {
 
   const tab = screen === "workbench" || screen === "todos" || (screen === "store-employee-detail" && storeEmployeeReturnScreen === "workbench") ? "workbench" : screen === "customers" || screen === "customer-detail" || screen === "health-report" || screen === "health-plan" || screen === "batch-plan"
     ? "customers"
-    : screen === "market" || screen === "team" || screen === "team-detail" || (screen === "member-detail" && (roleView === "group" || memberReturnScreen === "market")) || (screen === "store-employee-detail" && storeEmployeeReturnScreen === "market") ? "market" : screen === "mine" ? "mine" : "home";
+    : screen === "member-detail" && memberReturnScreen === "workbench" ? "workbench" : screen === "market" || screen === "team" || screen === "team-detail" || (screen === "member-detail" && (roleView === "group" || memberReturnScreen === "market")) || (screen === "store-employee-detail" && storeEmployeeReturnScreen === "market") ? "market" : screen === "mine" ? "mine" : "home";
 
   const announce = (message: string) => {
     setToast(message);
@@ -958,9 +964,9 @@ export default function Prototype() {
     announce(`${batchPlans.length} 位顾客方案已推送`);
   };
 
-  const openMember = (member: (typeof teamRows)[number], fromTeam = false, fromDirectory = false) => {
+  const openMember = (member: (typeof teamRows)[number], fromTeam = false, fromDirectory = false, returnTo?: "workbench" | "team-detail" | "team" | "market") => {
     keyboard.hide();
-    setMemberReturnScreen(fromDirectory ? "market" : fromTeam ? "team-detail" : "team");
+    setMemberReturnScreen(returnTo || (fromDirectory ? "market" : fromTeam ? "team-detail" : "team"));
     const owningTeam = managedTeams.find((team) => team.memberNames.includes(member.name));
     setSelectedMember({ ...member, district: fromDirectory && roleView === "store" ? "杭州 · 团队" : member.district, activeTeam: owningTeam ? `${getTeamStats(owningTeam).active} 人` : member.activeTeam });
     const savedAnalysis = memberAnalysisSnapshots[member.name];
@@ -1237,14 +1243,21 @@ export default function Prototype() {
                   {!visibleStoreTeamTodos.length && <div className="todo-empty"><strong>团队待办已全部完成</strong><span>完成进度和员工行动记录可在查看全部中复盘。</span></div>}
                 </section>}
                 {roleView === "group" && <section className="surface team-focus">
-                  <SectionHeading icon={<GroupIcon />} title="团队分析与跟进" action={<button className="text-action" onClick={() => { setMarketMode("teams"); setScreen("market"); }}>全部团队 <ChevronRightIcon /></button>} />
-                  <p className="team-focus-helper">优先跟进未完成任务的团队，按最近截止日和目标进度排列。</p>
-                  {priorityTeamFollowups.map(({ team, stats, followup }) => <button type="button" className="team-followup-card" key={team.id} onClick={() => openTeam(team.id)}>
-                    <span className="partner-card-head"><span className="partner-avatar"><GroupIcon /></span><span className="market-row-copy"><strong>{team.name}</strong><span>团队长 {team.leader}</span></span><ChevronRightIcon /></span>
-                    <span className="team-followup-issue">{team.issue}</span>
-                    <span className="team-followup-evidence"><span>目标完成 <b>{stats.progress}%</b></span><span>活跃成员 <b>{stats.active} / {team.memberNames.length}</b></span></span>
-                    <span className="team-followup-progress"><span>{followup.pendingCount ? `${followup.pendingCount} 项未完成${followup.feedbackCount ? ` · ${followup.feedbackCount} 项待反馈` : ""}` : "本轮任务已完成"}</span><span>{followup.nextDeadline ? `最近截止 ${followup.nextDeadline}` : "查看成员经营情况"}</span></span>
-                  </button>)}
+                  <SectionHeading icon={<GroupIcon />} title="团队经营重点" action={<button className="text-action" onClick={() => { setMarketMode("teams"); setScreen("market"); }}>全部团队 <ChevronRightIcon /></button>} />
+                  <p className="team-focus-helper">按 T-1 目标进度、复购和成员活跃情况定位重点；任务进度单独列出。</p>
+                  {priorityTeamFollowups.map(({ team, stats, followup }) => {
+                    const focusMember = getTeamFocusMember(team);
+                    const nextTask = team.tasks.filter((task) => task.status !== "已完成").sort((a, b) => a.deadline.localeCompare(b.deadline))[0];
+                    return <article className="group-team-focus-card" key={team.id}>
+                      <button type="button" className="group-team-focus-main" onClick={() => openTeam(team.id)}>
+                        <span className="group-team-focus-head"><span className="partner-avatar"><GroupIcon /></span><span className="market-row-copy"><strong>{team.name}</strong><span>团队长 {team.leader} · {team.memberNames.length} 位成员</span></span><span className="group-team-status">{followup.pendingCount ? "任务待跟进" : "成员待激活"}</span></span>
+                        <span className="group-team-metrics"><span><small>目标完成</small><b>{stats.progress}%</b></span><span><small>成员复购</small><b>{stats.repurchase}%</b></span><span><small>活跃成员</small><b>{stats.active}/{team.memberNames.length}</b></span></span>
+                        <span className="group-team-observation"><b>经营观察</b>{team.issue}</span>
+                      </button>
+                      {focusMember && <button type="button" className="group-team-member-signal" onClick={() => openMember(focusMember, true, false, "workbench")}><span><small>成员关注</small><b>{focusMember.name} · {focusMember.issue}</b></span><span>查看分析 <ChevronRightIcon /></span></button>}
+                      <div className="group-team-next-task"><span className="group-team-task-label">跟进任务</span><span className="group-team-task-copy">{nextTask ? <><b>{nextTask.title}</b><small>{nextTask.member}负责 · 截止 {nextTask.deadline}</small></> : <b>本轮任务已完成</b>}</span><span className="group-team-task-count">{followup.pendingCount ? `${followup.pendingCount} 项未完成` : "已完成"}</span></div>
+                    </article>;
+                  })}
                   {!priorityTeamFollowups.length && <div className="notification-empty">暂无需要优先跟进的团队，可查看全部团队。</div>}
                 </section>}
                 </>}
