@@ -287,6 +287,16 @@ button { color: inherit; }
 .full { width: 100%; }
 .action-card .outline-button { margin-top: 11px; }
 .team-focus .section-heading { margin-bottom: 2px; }
+.store-employee-summary { display: grid; grid-template-columns: 1fr auto; gap: 5px 12px; padding: 10px 0; border-bottom: 1px solid var(--color-border); color: var(--color-text-secondary); font-size: var(--type-footnote); }
+.store-employee-summary b { color: var(--color-text); font-size: var(--type-body); }
+.store-employee-summary small { grid-column: 1 / -1; color: var(--color-text-muted); font-size: var(--type-caption); }
+.group-product-summary { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 8px; padding: 13px 0; }
+.group-product-card .group-product-summary { grid-template-columns: repeat(2,minmax(0,1fr)); }
+.group-product-summary > div { display: grid; gap: 5px; }
+.group-product-summary span { color: var(--color-text-muted); font-size: var(--type-caption); }
+.group-product-summary strong { color: var(--color-text); font-size: var(--type-headline); }
+.store-agent-section { padding: 0 14px 6px; }
+.store-agent-section .team-focus-helper { padding: 8px 0; }
 .team-focus-helper { padding: 10px 0 2px; color: var(--color-text-secondary); font-size: var(--type-footnote); line-height: 1.5; }
 .team-focus-row { display: grid; width: 100%; min-height: 66px; grid-template-columns: 36px minmax(0,1fr) auto 16px; align-items: center; gap: 9px; padding: 8px 0; border: 0; border-bottom: 1px solid var(--color-border); background: transparent; text-align: left; }
 .team-focus-row:last-child { border-bottom: 0; }
@@ -581,6 +591,7 @@ button { color: inherit; }
 .settings-list button:last-child { border-bottom: 0; }
 .settings-list svg { width: 14px; height: 14px; color: var(--color-text-muted); }
 .bottom-nav { position: absolute; z-index: 15; right: 0; bottom: 0; left: 0; display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); padding: 8px 8px calc(8px + var(--device-safe-area-bottom, env(safe-area-inset-bottom, 0px))); border-top: 1px solid color-mix(in srgb, var(--color-border) 82%, transparent); background: color-mix(in srgb, var(--color-canvas) 97%, transparent); backdrop-filter: blur(10px); }
+.bottom-nav.role-store { grid-template-columns: repeat(5,minmax(0,1fr)); padding-right: 5px; padding-left: 5px; }
 .nav-item { display: grid; min-height: 56px; align-content: center; justify-items: center; gap: 5px; border: 0; border-radius: 12px; background: transparent; color: var(--color-text-muted); }
 .nav-item span { display: grid; width: 32px; height: 28px; place-items: center; }
 .nav-item svg { width: 24px; height: 24px; }

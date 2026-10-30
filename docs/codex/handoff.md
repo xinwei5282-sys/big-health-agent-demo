@@ -7,3 +7,4 @@
 - 演示数据真源：`src/business-demo-data.ts`；最近生成的门店/集团经营诊断、团队分析和顾客方案快照：`src/ai-demo-snapshots.ts`。新访客以这些快照为默认展示，浏览器本地保存的更新优先。
 - Pages 只托管静态文件。`server.mjs` 需要单独部署到支持 Node.js 的服务，并配置 `VITE_AI_API_URL`，否则线上“重新生成”及新 AI 分析不可用；API Key 不得放入前端或仓库。
 - 最近部署：commit `9fdba3692b9a8936e62f2a43dbb403d5fe947632`，GitHub Actions run `40855054073` 成功；站点 HTTP 返回 200。后续新增交接记录的提交会自动触发下一次部署。
+- 本轮 2026-10-30：工作台待办改成三条摘要及“查看全部”全量页；门店导航增加“市场”，只展示当前门店关联代理与其员工；新增门店团队分析及单员工 AI 经营详情；集团看板增加重点商品销售、库存预警、慢动销和排行。员工基础台账关联本店 POS 订单、顾客、回访和健康方案服务记录，数据版本 `store-demo-v7`；五位员工分析快照由百炼 qwen3.8-max 按 `app-prompts-v6:business:store-employee` 真实生成。`npm run check:runtime`、`npm run build`、`git diff --check` 均通过；本地 `4175` 返回 200 且实际模块含本轮功能和五条员工快照。自动化浏览器宿主不可用，本轮未完成截图级视觉及点击验收。提交推送后由 GitHub Actions 部署 Pages。

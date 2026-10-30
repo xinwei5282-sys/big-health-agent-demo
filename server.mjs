@@ -151,7 +151,7 @@ const server = createServer(async (request, response) => {
       if (attachmentPath) await unlink(attachmentPath).catch(() => {});
     }
     text = normalizePromptResult(body.kind, payload, text);
-    respond(response, 200, { text, source: "live-model", provider: "Alibaba Cloud Bailian", model: bailianModel, datasetVersion: body.datasetVersion || null, promptVersion: body.kind === "business" && !payload.member && payload.view === "品牌集团" ? groupBusinessPromptVersion : `${appPromptVersion}:${body.kind}${body.kind === "business" ? payload.member ? ":member" : ":store" : body.kind === "health-report" && payload.question && payload.previousAnalysis ? ":followup" : ""}`, demoData: true }, origin);
+    respond(response, 200, { text, source: "live-model", provider: "Alibaba Cloud Bailian", model: bailianModel, datasetVersion: body.datasetVersion || null, promptVersion: body.kind === "business" && !payload.member && payload.view === "品牌集团" ? groupBusinessPromptVersion : `${appPromptVersion}:${body.kind}${body.kind === "business" ? payload.member ? ":member" : payload.employee ? ":store-employee" : ":store" : body.kind === "health-report" && payload.question && payload.previousAnalysis ? ":followup" : ""}`, demoData: true }, origin);
   } catch (error) {
     respond(response, 502, { error: error instanceof Error ? error.message : "AI 请求失败" }, origin);
   } finally {

@@ -3,7 +3,7 @@
  * are derived below so the same T-1 inputs cannot drift across views.
  * Amounts are CNY; the network and priority-detail fixtures have separate scopes.
  */
-export const storeDemoDatasetVersion = "store-demo-v6";
+export const storeDemoDatasetVersion = "store-demo-v7";
 export const groupDemoDatasetVersion = "group-demo-v6";
 
 const yuanToWan = (amount: number) => amount / 10_000;
@@ -68,6 +68,13 @@ const allocateByWeights = (total: number, weights: number[]) => {
   return amounts;
 };
 const storeOrderCount = storeSeed.salesPeriod.orders;
+export const storeEmployeeRoster = [
+  { id: "STAFF-HZ-001", name: "周宁", position: "会员顾问", agentName: "张伟", salesTargetYuan: 48_000 },
+  { id: "STAFF-HZ-002", name: "林佳", position: "营养顾问", agentName: "张伟", salesTargetYuan: 42_000 },
+  { id: "STAFF-HZ-003", name: "王超", position: "健康服务顾问", agentName: "张伟", salesTargetYuan: 40_000 },
+  { id: "STAFF-HZ-004", name: "陈悦", position: "会员顾问", agentName: "赵敏", salesTargetYuan: 39_000 },
+  { id: "STAFF-HZ-005", name: "刘敏", position: "营养顾问", agentName: "赵敏", salesTargetYuan: 33_173 },
+];
 const recentUnitTargets = [26, 18, 4, 5, 21, 12, 9];
 const storeSkuCatalog = storeSeed.products.map((product, index) => ({
   ...product,
@@ -90,6 +97,7 @@ const storeOrderCustomerIds = (() => {
 const currentMonthOrders = Array.from({ length: storeOrderCount }, (_, index) => ({
   id: "POS-HZ-1026-" + String(index + 1).padStart(4, "0"),
   customerId: storeOrderCustomerIds[index],
+  employeeId: storeEmployeeRoster[(Number(storeOrderCustomerIds[index].split("-").at(-1)) - 1) % storeEmployeeRoster.length].id,
   date: "2026-10-" + String(index < 95 ? 22 + (index % 7) : 1 + (index * 17) % 21).padStart(2, "0"),
   status: "paid" as const,
 }));
@@ -148,6 +156,7 @@ export const storeCustomerRecords = Array.from({ length: storeSeed.members.activ
     id,
     displayName: featured?.name || `顾客${String(index + 1).padStart(3, "0")}`,
     storeId: storeSeed.storeId,
+    employeeId: orders[0]?.employeeId || storeEmployeeRoster[index % storeEmployeeRoster.length].id,
     status: "active" as const,
     registeredAt: index < storeSeed.members.newThisMonth ? "2026-10-" + String(1 + (index * 7) % 28).padStart(2, "0") : "2025-" + String(1 + index % 9).padStart(2, "0") + "-15",
     age: featured?.age || 30 + (index * 11) % 45,
@@ -163,15 +172,42 @@ export const storeCustomerRecords = Array.from({ length: storeSeed.members.activ
 export const storeCallbackRecords = Array.from({ length: storeSeed.callbacks.total }, (_, index) => ({
   id: "CALL-HZ-" + String(index + 1).padStart(3, "0"),
   customerId: storeCustomerRecords[index].id,
+  employeeId: storeCustomerRecords[index].employeeId,
   status: index < storeSeed.callbacks.completed ? "completed" as const : "pending" as const,
   dueAt: "2026-10-" + String(1 + (index * 11) % 28).padStart(2, "0"),
 }));
 export const storeHealthServiceRecords = Array.from({ length: storeSeed.healthService.deviceBoundCustomers }, (_, index) => ({
   customerId: storeCustomerRecords[index].id,
+  employeeId: storeCustomerRecords[index].employeeId,
   deviceBound: true as const,
   planStatus: index < storeSeed.healthService.plansExecuting ? "executing" as const : index < storeSeed.healthService.plansExecuting + storeSeed.healthService.plansDue ? "due" as const : "awaiting-data" as const,
   latestReadingAt: index < storeSeed.healthService.plansExecuting + storeSeed.healthService.plansDue ? "2026-10-" + String(1 + (index * 5) % 28).padStart(2, "0") : null,
 }));
+export const storeEmployeeRecords = storeEmployeeRoster.map((employee) => {
+  const orders = storeSalesOrders.filter((order) => order.employeeId === employee.id);
+  const customers = storeCustomerRecords.filter((customer) => customer.employeeId === employee.id);
+  const callbacks = storeCallbackRecords.filter((record) => record.employeeId === employee.id);
+  const healthPlans = storeHealthServiceRecords.filter((record) => record.employeeId === employee.id);
+  const salesYuan = orders.reduce((total, order) => total + order.netAmountYuan, 0);
+  const repeatEligible = customers.filter((customer) => customer.orderCount > 0).length;
+  return {
+    ...employee,
+    storeId: storeSeed.storeId,
+    salesYuan,
+    salesProgressPercent: Math.round(salesYuan / employee.salesTargetYuan * 100),
+    orderCount: orders.length,
+    averageOrderYuan: orders.length ? Math.round(salesYuan / orders.length) : 0,
+    customerCount: customers.length,
+    newCustomers: customers.filter((customer) => customer.registeredAt.startsWith("2026-10")).length,
+    repeatBuyers: customers.filter((customer) => customer.repeatBuyer).length,
+    repeatEligible,
+    repeatRatePercent: repeatEligible ? Math.round(customers.filter((customer) => customer.repeatBuyer).length / repeatEligible * 100) : 0,
+    callbackCompleted: callbacks.filter((record) => record.status === "completed").length,
+    callbackPending: callbacks.filter((record) => record.status === "pending").length,
+    healthPlansExecuting: healthPlans.filter((record) => record.planStatus === "executing").length,
+    healthPlansDue: healthPlans.filter((record) => record.planStatus === "due").length,
+  };
+});
 type StoreHealthReading = { customerId: string; storeId: string; measuredAt: string; glucose: number; totalCholesterol: number; triglyceride: number; hdl: number; ldl: number; systolic: number; diastolic: number; weightKg: number; bodyFatPercent: number; sleepHours: number; deepSleepHours: number };
 const featuredHealthSamples: Record<string, number[][]> = {
   "CUS-HZ-0087": [
@@ -873,6 +909,9 @@ export const memberDevelopment = Object.fromEntries(rawGroupSource.teamMembers.m
   lastOrder: member.lastOrder,
   partners: member.partnerIds,
 }]));
+export const storeAgentRoster = rawGroupSource.teamMembers
+  .filter((member) => member.partnerIds.includes("store-hz"))
+  .map((member) => ({ id: `AGENT-${member.teamId}-${member.name}`, name: member.name, teamId: member.teamId, employeeCount: storeEmployeeRoster.filter((employee) => employee.agentName === member.name).length }));
 const groupStageStart = rawGroupSource.recruitmentStages[0].count;
 export const groupRecruitmentFunnel = rawGroupSource.recruitmentStages.map((stage) => ({ label: stage.label, count: String(stage.count), progress: Math.round(stage.count / groupStageStart * 100) }));
 const groupHealthCounts = [rawGroupSource.storeHealth.healthy, rawGroupSource.storeHealth.attention, rawGroupSource.storeHealth.warning];
@@ -900,12 +939,14 @@ export const storeBusinessSourceForAi = {
     customerProfileRecords: storeCustomerRecords.length,
     inventoryMovementRecords: storeProductTransactions.reduce((sum, product) => sum + product.inventoryMovements.length, 0),
     dailySalesRecords: storeDailySalesLedger.length,
+    employeeRecords: storeEmployeeRecords.length,
   },
   salesPeriod: storePeriod,
   memberFacts: rawStoreSource.members,
   callbackFacts: rawStoreSource.callbacks,
   productFacts: storeProductFlags,
   healthServiceFacts: rawStoreSource.healthService,
+  employeeOperatingFacts: storeEmployeeRecords.map(({ id, name, position, salesTargetYuan, salesYuan, orderCount, newCustomers, repeatBuyers, repeatEligible, callbackCompleted, callbackPending, healthPlansDue }) => ({ id, name, position, salesTargetYuan, salesYuan, orderCount, newCustomers, repeatBuyers, repeatEligible, callbackCompleted, callbackPending, healthPlansDue })),
 };
 export const groupBusinessSourceForAi = {
   sourceScope: "集团经营指标由门店级月度经营记录汇总；商品由门店-SKU流水汇总；代理、经销商返单、招商、结算、设备同步和AI行动分别按各自明细记录汇总。三家重点门店已纳入集团总量，不重复加总。",
