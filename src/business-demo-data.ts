@@ -909,9 +909,15 @@ export const memberDevelopment = Object.fromEntries(rawGroupSource.teamMembers.m
   lastOrder: member.lastOrder,
   partners: member.partnerIds,
 }]));
-export const storeAgentRoster = rawGroupSource.teamMembers
-  .filter((member) => member.partnerIds.includes("store-hz"))
-  .map((member) => ({ id: `AGENT-${member.teamId}-${member.name}`, name: member.name, teamId: member.teamId, employeeCount: storeEmployeeRoster.filter((employee) => employee.agentName === member.name).length }));
+export const storeAgentRoster = rawGroupSource.teams
+  .filter((team) => team.partnerIds.includes("store-hz"))
+  .flatMap((team) => team.memberNames
+    .filter((name) => name !== team.leader)
+    .flatMap((name) => {
+      const member = rawGroupSource.teamMembers.find((item) => item.teamId === team.id && item.name === name);
+      return member && member.partnerIds.includes("store-hz") ? [member] : [];
+    }))
+  .map((member) => ({ id: `AGENT-${member.teamId}-${member.name}`, name: member.name, teamId: member.teamId, roleLabel: "团队", employeeCount: storeEmployeeRoster.filter((employee) => employee.agentName === member.name).length, salesYuan: member.netSalesYuan, targetYuan: member.targetYuan, orderCount: member.orderCount, newCustomers: member.newCustomers, repeatRatePercent: ratePercent(member.repeatBuyers, member.repeatEligible), active: member.active, issue: member.issue }));
 const groupStageStart = rawGroupSource.recruitmentStages[0].count;
 export const groupRecruitmentFunnel = rawGroupSource.recruitmentStages.map((stage) => ({ label: stage.label, count: String(stage.count), progress: Math.round(stage.count / groupStageStart * 100) }));
 const groupHealthCounts = [rawGroupSource.storeHealth.healthy, rawGroupSource.storeHealth.attention, rawGroupSource.storeHealth.warning];

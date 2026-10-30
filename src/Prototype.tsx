@@ -68,6 +68,7 @@ type RoleView = "store" | "group";
 type ProductFollowupKey = "low-stock" | "slow-moving";
 type DailyTodoItem = { title: string; text: string; done: boolean; carried: boolean };
 type DailyTodoSnapshot = { date: string; items: DailyTodoItem[]; diagnosisVersion?: string };
+type StoreTeamTodo = { id: string; employeeId: string; employeeName: string; position: string; title: string; text: string; done: boolean; updatedAt: string };
 type BatchPlan = { customer: string; focus: string; content: string };
 type SingleHealthPlanSnapshot = BatchPlan & { datasetVersion: string; updatedAt: string };
 type BusinessSnapshot = { answer: string; updatedAt: string; version?: string; datasetVersion?: string };
@@ -80,6 +81,7 @@ const memberAnalysisSnapshotKey = "health-member-analysis-snapshots-v1";
 const dailyTodoSnapshotKey = "health-daily-todos-v1";
 const notificationReadKey = "health-system-notification-read-v1";
 const storeEmployeeAnalysisSnapshotKey = "health-store-employee-analysis-v1";
+const storeTeamTodoSnapshotKey = "health-store-team-todos-v1";
 const todayKey = new Intl.DateTimeFormat("sv-SE", { timeZone: "Asia/Shanghai", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
 const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000);
 const yesterdayLabel = yesterday.toLocaleDateString("zh-CN", { month: "2-digit", day: "2-digit" });
@@ -165,6 +167,18 @@ function makeTodoTitle(text: string) {
     .trim();
   const title = Array.from(candidate).slice(0, 18).join("").replace(/[，,、:：\s]+$/, "");
   return title || "经营跟进事项";
+}
+
+function extractStoreEmployeeActions(answer: string) {
+  const section = answer.match(/(?:优先行动与目标|优先行动|行动建议)\s*[：:]?\s*([\s\S]*?)(?=\n\s*\n|$)/)?.[1] || "";
+  return Array.from(section.matchAll(/(?:^|\n)\s*(?:\d+[.、]|[一二三四五六七八九十]+[、.])\s*([^\n]+)/g), (match) => match[1].trim()).filter(Boolean);
+}
+
+function loadDoneStoreTeamTodoIds() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(storeTeamTodoSnapshotKey) || "null") as { datasetVersion?: string; doneIds?: string[] } | null;
+    return saved?.datasetVersion === storeDemoDatasetVersion && Array.isArray(saved.doneIds) ? saved.doneIds : [];
+  } catch { return []; }
 }
 
 function loadDailyTodoSnapshots(): Partial<Record<RoleView, DailyTodoSnapshot>> {
@@ -597,6 +611,8 @@ export default function Prototype() {
   const [todoConfirmed, setTodoConfirmed] = useState(() => getTodayTodos("store", loadDailyTodoSnapshots()).length > 0);
   const [todoItems, setTodoItems] = useState<DailyTodoItem[]>(() => getTodayTodos("store", loadDailyTodoSnapshots()));
   const [todoStatusTab, setTodoStatusTab] = useState<"pending" | "done">("pending");
+  const [todoListScope, setTodoListScope] = useState<"business" | "team">("business");
+  const [doneStoreTeamTodoIds, setDoneStoreTeamTodoIds] = useState<string[]>(loadDoneStoreTeamTodoIds);
   const [businessState, setBusinessState] = useState<AiState>("success");
   const [businessSnapshots, setBusinessSnapshots] = useState<Record<RoleView, BusinessSnapshot>>(loadBusinessSnapshots);
   const [businessAnswer, setBusinessAnswer] = useState(() => loadBusinessSnapshots().store.answer);
@@ -671,10 +687,25 @@ export default function Prototype() {
   const draftCarryOverCount = dailyTodoDrafts.filter((item) => item.carried).length;
   const todoDoneCount = todoItems.filter((item) => item.done).length;
   const todoPendingCount = todoItems.length - todoDoneCount;
+  const todoProgressPercent = todoItems.length ? Math.round(todoDoneCount / todoItems.length * 100) : 0;
   const pendingTodoItems = todoItems.map((item, index) => ({ item, index })).filter(({ item }) => !item.done);
   const filteredTodoItems = todoItems.map((item, index) => ({ item, index })).filter(({ item }) => item.done === (todoStatusTab === "done"));
   const visibleTodoItems = pendingTodoItems.slice(0, 3);
   const todoCarryOverCount = todoItems.filter((item) => item.carried && !item.done).length;
+  const storeTeamTodoItems: StoreTeamTodo[] = storeEmployeeRecords.flatMap((employee) => {
+    const snapshot = storeEmployeeAnalysisSnapshots[employee.id];
+    if (!snapshot?.answer) return [];
+    return extractStoreEmployeeActions(snapshot.answer).map((text, index) => {
+      const id = `${employee.id}:${index}:${text}`;
+      return { id, employeeId: employee.id, employeeName: employee.name, position: employee.position, title: makeTodoTitle(text), text, done: doneStoreTeamTodoIds.includes(id), updatedAt: snapshot.updatedAt };
+    });
+  });
+  const storeTeamTodoDoneCount = storeTeamTodoItems.filter((item) => item.done).length;
+  const storeTeamTodoPendingItems = storeTeamTodoItems.filter((item) => !item.done);
+  const visibleStoreTeamTodos = storeTeamTodoPendingItems.slice(0, 3);
+  const filteredStoreTeamTodos = storeTeamTodoItems.filter((item) => item.done === (todoStatusTab === "done"));
+  const filteredStoreTeamTodoGroups = storeEmployeeRecords.map((employee) => ({ employee, items: filteredStoreTeamTodos.filter((item) => item.employeeId === employee.id) })).filter((group) => group.items.length > 0);
+  const storeTeamTodoProgressPercent = storeTeamTodoItems.length ? Math.round(storeTeamTodoDoneCount / storeTeamTodoItems.length * 100) : 0;
   const hasUnreadNotification = roleView === "store" && !notificationRead;
   const visibleCustomers = customerRows.filter((customer) => {
     const searchMatch = `${customer.name} ${customer.age} ${customer.metric} ${customer.note}`.toLocaleLowerCase().includes(customerSearch.trim().toLocaleLowerCase());
@@ -720,7 +751,7 @@ export default function Prototype() {
 
   const tab = screen === "workbench" || screen === "todos" || (screen === "store-employee-detail" && storeEmployeeReturnScreen === "workbench") ? "workbench" : screen === "customers" || screen === "customer-detail" || screen === "health-report" || screen === "health-plan" || screen === "batch-plan"
     ? "customers"
-    : screen === "market" || screen === "team" || screen === "team-detail" || (screen === "member-detail" && roleView === "group") || (screen === "store-employee-detail" && storeEmployeeReturnScreen === "market") ? "market" : screen === "mine" ? "mine" : "home";
+    : screen === "market" || screen === "team" || screen === "team-detail" || (screen === "member-detail" && (roleView === "group" || memberReturnScreen === "market")) || (screen === "store-employee-detail" && storeEmployeeReturnScreen === "market") ? "market" : screen === "mine" ? "mine" : "home";
 
   const announce = (message: string) => {
     setToast(message);
@@ -734,7 +765,8 @@ export default function Prototype() {
     setScreen("customers");
   };
 
-  const openTodos = () => { keyboard.hide(); setScreen("todos"); };
+  const openTodos = () => { keyboard.hide(); setTodoListScope("business"); setTodoStatusTab("pending"); setScreen("todos"); };
+  const openTeamTodos = () => { keyboard.hide(); setTodoListScope("team"); setTodoStatusTab("pending"); setScreen("todos"); };
 
   const openProductFollowup = (key: ProductFollowupKey) => {
     setProductFollowupKey(key);
@@ -930,7 +962,7 @@ export default function Prototype() {
     keyboard.hide();
     setMemberReturnScreen(fromDirectory ? "market" : fromTeam ? "team-detail" : "team");
     const owningTeam = managedTeams.find((team) => team.memberNames.includes(member.name));
-    setSelectedMember({ ...member, activeTeam: owningTeam ? `${getTeamStats(owningTeam).active} 人` : member.activeTeam });
+    setSelectedMember({ ...member, district: fromDirectory && roleView === "store" ? "杭州 · 团队" : member.district, activeTeam: owningTeam ? `${getTeamStats(owningTeam).active} 人` : member.activeTeam });
     const savedAnalysis = memberAnalysisSnapshots[member.name];
     setMemberAiState(savedAnalysis ? "success" : "idle");
     setMemberAnswer(savedAnalysis?.answer || "");
@@ -1029,6 +1061,12 @@ export default function Prototype() {
     setTodoItems(updated);
     setTodoSnapshots(nextSnapshots);
     localStorage.setItem(dailyTodoSnapshotKey, JSON.stringify(nextSnapshots));
+  };
+
+  const toggleStoreTeamTodo = (id: string) => {
+    const next = doneStoreTeamTodoIds.includes(id) ? doneStoreTeamTodoIds.filter((item) => item !== id) : [...doneStoreTeamTodoIds, id];
+    setDoneStoreTeamTodoIds(next);
+    localStorage.setItem(storeTeamTodoSnapshotKey, JSON.stringify({ datasetVersion: storeDemoDatasetVersion, doneIds: next }));
   };
 
   const openPlan = () => {
@@ -1192,10 +1230,11 @@ export default function Prototype() {
                   {visibleTodoItems.map(({ item, index: itemIndex }, index) => <div className={`action-item todo-item ${item.done ? "completed" : ""}`} key={`${itemIndex}-${item.text}`}><span className="action-index">{String(index + 1).padStart(2, "0")}</span><div className="todo-item-copy"><strong>{item.title}</strong><span>{item.text}</span>{item.carried && <small className="todo-carryover">上周期延续</small>}</div><button type="button" className={`todo-check ${item.done ? "done" : ""}`} aria-label={item.done ? `标记未完成：${item.title}` : `标记完成：${item.title}`} onClick={() => toggleTodo(itemIndex)}><CheckCircledIcon /></button></div>)}
                   {!pendingTodoItems.length && <div className="todo-empty">暂无未完成待办</div>}
                 </section>}
-                {roleView === "store" && <section className="surface team-focus">
-                  <SectionHeading icon={<GroupIcon />} title="门店团队分析" action={<button className="text-action" onClick={() => setScreen("market")}>全部员工 <ChevronRightIcon /></button>} />
-                  <div className="store-employee-summary"><span>{storeEmployeeTeamSummary.employees} 位员工</span><b>{formatTeamMoney(storeEmployeeTeamSummary.salesYuan)} / {formatTeamMoney(storeEmployeeTeamSummary.targetYuan)}</b><small>销售额 / 目标 · {storeEmployeeTeamSummary.callbacksPending} 项回访待跟进</small></div>
-                  {[...storeEmployeeRecords].sort((a, b) => a.salesProgressPercent - b.salesProgressPercent).slice(0, 2).map((employee) => <button type="button" className="team-focus-row" key={employee.id} onClick={() => openStoreEmployee(employee, "workbench")}><span className="avatar">{employee.name.slice(0, 1)}</span><span className="team-focus-copy"><strong>{employee.name}<small>{employee.position}</small></strong><span>{employee.orderCount} 笔订单 · {employee.callbackPending} 项回访待跟进</span></span><span className="team-focus-score"><strong>{employee.salesProgressPercent}%</strong><small>目标完成</small></span><ChevronRightIcon /></button>)}
+                {roleView === "store" && <section className="surface team-todo-preview">
+                  <div className="workbench-todo-heading"><span className="section-title"><span className="section-icon"><GroupIcon /></span><h2>团队待办</h2></span><button className="text-action" onClick={openTeamTodos}>查看全部 <ChevronRightIcon /></button></div>
+                  <div className="team-todo-overview"><span>{new Set(storeTeamTodoItems.map((item) => item.employeeId)).size} 位员工</span><span>{storeTeamTodoItems.length} 项行动建议</span></div>
+                  {visibleStoreTeamTodos.map((item, index) => <article className="team-todo-row" key={item.id}><span className="action-index">{String(index + 1).padStart(2, "0")}</span><div className="team-todo-copy"><button type="button" className="team-todo-employee" onClick={() => { const employee = storeEmployeeRecords.find((record) => record.id === item.employeeId); if (employee) openStoreEmployee(employee, "workbench"); }}>{item.employeeName}<span>{item.position}</span><ChevronRightIcon /></button><strong>{item.title}</strong><span>{item.text}</span></div><button type="button" className="todo-check" aria-label={`标记完成：${item.employeeName}，${item.title}`} onClick={() => toggleStoreTeamTodo(item.id)}><CheckCircledIcon /></button></article>)}
+                  {!visibleStoreTeamTodos.length && <div className="todo-empty"><strong>团队待办已全部完成</strong><span>完成进度和员工行动记录可在查看全部中复盘。</span></div>}
                 </section>}
                 {roleView === "group" && <section className="surface team-focus">
                   <SectionHeading icon={<GroupIcon />} title="团队分析与跟进" action={<button className="text-action" onClick={() => { setMarketMode("teams"); setScreen("market"); }}>全部团队 <ChevronRightIcon /></button>} />
@@ -1267,9 +1306,18 @@ export default function Prototype() {
           )}
 
           {screen === "todos" && (
-            <div className={`page-stack subpage-stack ${!todoConfirmed ? "workbench-stack" : ""}`}>
-              <SubpageHeader title="全部待办" subtitle={todoConfirmed ? `${todayKey.slice(5).replace("-", "/")} · 共 ${todoItems.length} 项` : `本期诊断建议 · ${dailyTodoDrafts.length} 项待确认`} onBack={() => setScreen("workbench")} />
-              {todoConfirmed ? <section className="surface action-card"><div className="todo-status-tabs" role="tablist" aria-label="待办状态"><button type="button" role="tab" aria-selected={todoStatusTab === "pending"} className={todoStatusTab === "pending" ? "active" : ""} onClick={() => setTodoStatusTab("pending")}><span>未完成 {todoPendingCount}</span></button><button type="button" role="tab" aria-selected={todoStatusTab === "done"} className={todoStatusTab === "done" ? "active" : ""} onClick={() => setTodoStatusTab("done")}><span>已完成 {todoDoneCount}</span></button></div>{todoCarryOverCount > 0 && <div className="todo-overview"><span>上周期延续 <strong>{todoCarryOverCount}</strong> 项</span></div>}{filteredTodoItems.map(({ item, index }, rowIndex) => <div className={`action-item todo-item ${item.done ? "completed" : ""}`} key={`${index}-${item.text}`}><span className="action-index">{String(rowIndex + 1).padStart(2, "0")}</span><div className="todo-item-copy"><strong>{item.title}</strong><span>{item.text}</span>{item.carried && <small className="todo-carryover">上周期延续</small>}</div><button type="button" className={`todo-check ${item.done ? "done" : ""}`} aria-label={item.done ? `标记未完成：${item.title}` : `标记完成：${item.title}`} onClick={() => toggleTodo(index)}><CheckCircledIcon /></button></div>)}{!filteredTodoItems.length && <div className="todo-empty">暂无{todoStatusTab === "pending" ? "未完成" : "已完成"}待办</div>}</section> : <section className="surface todo-draft-preview"><SectionHeading icon={<ActivityLogIcon />} title="本期诊断行动建议" action={<span className="draft-source-pill">待确认</span>} />{dailyTodoDrafts.map((item, index) => <div className="todo-draft-row" key={`all-draft-${index}-${item.text}`}><span className="action-index">{String(index + 1).padStart(2, "0")}</span><div><strong>{item.title}</strong><span className="todo-description">{item.text}</span><span className="todo-row-meta">{item.carried ? "上周期未完成 · 延续跟进" : roleView === "store" ? "建议负责人：门店负责人 · 本周期" : "建议负责人：集团/区域负责人 · 本周期"}</span></div></div>)}</section>}
+            <div className={`page-stack subpage-stack todo-page ${todoListScope === "business" && !todoConfirmed ? "workbench-stack" : ""}`}>
+              <SubpageHeader title={todoListScope === "team" ? "团队待办" : "全部待办"} subtitle={todoListScope === "team" ? `${new Set(storeTeamTodoItems.map((item) => item.employeeId)).size} 位员工 · AI 分析行动` : todoConfirmed ? `${todayKey.slice(5).replace("-", "/")} · 本周期 ${todoItems.length} 项` : `本期诊断建议 · ${dailyTodoDrafts.length} 项待确认`} onBack={() => setScreen("workbench")} />
+              {todoListScope === "team" ? <>
+                <section className="surface todo-progress-card"><div className="todo-progress-copy"><strong>团队行动进度</strong><span>{storeTeamTodoDoneCount} / {storeTeamTodoItems.length} 项已完成</span></div><span className="todo-progress-percent">{storeTeamTodoProgressPercent}%</span><div className="todo-progress-track" role="progressbar" aria-label="团队待办完成进度" aria-valuemin={0} aria-valuemax={100} aria-valuenow={storeTeamTodoProgressPercent}><span style={{ width: `${storeTeamTodoProgressPercent}%` }} /></div></section>
+                <section className="todo-confirmed-list"><div className="todo-status-tabs" role="tablist" aria-label="团队待办状态"><button type="button" role="tab" aria-selected={todoStatusTab === "pending"} className={todoStatusTab === "pending" ? "active" : ""} onClick={() => setTodoStatusTab("pending")}><span>未完成 {storeTeamTodoItems.length - storeTeamTodoDoneCount}</span></button><button type="button" role="tab" aria-selected={todoStatusTab === "done"} className={todoStatusTab === "done" ? "active" : ""} onClick={() => setTodoStatusTab("done")}><span>已完成 {storeTeamTodoDoneCount}</span></button></div>{filteredStoreTeamTodoGroups.map(({ employee, items }) => <section className="team-todo-group" key={employee.id}><header className="team-todo-group-head"><span className="avatar">{employee.name.slice(0, 1)}</span><div><button type="button" className="team-todo-group-name" onClick={() => openStoreEmployee(employee, "workbench")}>{employee.name}<ChevronRightIcon /></button><span>{employee.position}</span></div><small>{items.length} 项行动</small></header>{items.map((item) => <article className={`team-todo-action ${item.done ? "completed" : ""}`} key={item.id}><div className="team-todo-copy"><strong>{item.title}</strong><span>{item.text}</span></div><button type="button" className={`todo-check ${item.done ? "done" : ""}`} aria-label={item.done ? `标记未完成：${item.employeeName}，${item.title}` : `标记完成：${item.employeeName}，${item.title}`} onClick={() => toggleStoreTeamTodo(item.id)}><CheckCircledIcon /></button></article>)}</section>)}{!filteredStoreTeamTodos.length && <div className="surface todo-empty"><strong>{storeTeamTodoItems.length ? `暂无${todoStatusTab === "pending" ? "未完成" : "已完成"}团队待办` : "暂无员工行动建议"}</strong><span>{storeTeamTodoItems.length ? "切换状态查看本周期的另一组行动记录。" : "员工完成 AI 分析后，针对性行动会显示在这里。"}</span></div>}</section>
+              </> : todoConfirmed ? <>
+                <section className="surface todo-progress-card"><div className="todo-progress-copy"><strong>本期完成进度</strong><span>{todoDoneCount} / {todoItems.length} 项已完成</span></div><span className="todo-progress-percent">{todoProgressPercent}%</span><div className="todo-progress-track" role="progressbar" aria-label="本期待办完成进度" aria-valuemin={0} aria-valuemax={100} aria-valuenow={todoProgressPercent}><span style={{ width: `${todoProgressPercent}%` }} /></div></section>
+                <section className="todo-confirmed-list"><div className="todo-status-tabs" role="tablist" aria-label="待办状态"><button type="button" role="tab" aria-selected={todoStatusTab === "pending"} className={todoStatusTab === "pending" ? "active" : ""} onClick={() => setTodoStatusTab("pending")}><span>未完成 {todoPendingCount}</span></button><button type="button" role="tab" aria-selected={todoStatusTab === "done"} className={todoStatusTab === "done" ? "active" : ""} onClick={() => setTodoStatusTab("done")}><span>已完成 {todoDoneCount}</span></button></div>{todoCarryOverCount > 0 && <div className="todo-overview"><span>上周期延续 <strong>{todoCarryOverCount}</strong> 项</span></div>}{filteredTodoItems.map(({ item, index }, rowIndex) => <article className={`action-item todo-item todo-task-card ${item.done ? "completed" : ""}`} key={`${index}-${item.text}`}><span className="action-index">{String(rowIndex + 1).padStart(2, "0")}</span><div className="todo-item-copy"><strong>{item.title}</strong><span>{item.text}</span>{item.carried && <small className="todo-carryover">上周期延续</small>}</div><button type="button" className={`todo-check ${item.done ? "done" : ""}`} aria-label={item.done ? `标记未完成：${item.title}` : `标记完成：${item.title}`} onClick={() => toggleTodo(index)}><CheckCircledIcon /></button></article>)}{!filteredTodoItems.length && <div className="surface todo-empty"><strong>暂无{todoStatusTab === "pending" ? "未完成" : "已完成"}待办</strong><span>{todoStatusTab === "pending" ? "本期任务已全部完成，可以在复盘时查看已完成记录。" : "完成任务后会保留在这里，方便本期复盘。"}</span></div>}</section>
+              </> : <>
+                <section className="surface todo-draft-overview"><span className="todo-draft-icon"><MagicWandIcon /></span><div><strong>{dailyTodoDrafts.length ? `${dailyTodoDrafts.length} 项行动建议待确认` : "当前没有待确认的行动建议"}</strong><span>{dailyTodoDrafts.length ? "确认后进入本期待办，完成时逐项勾选。" : "返回工作台查看最新经营诊断。"}</span></div></section>
+                <section className="surface todo-draft-preview"><SectionHeading icon={<ActivityLogIcon />} title="本期诊断行动建议" action={<span className="draft-source-pill">待确认</span>} />{dailyTodoDrafts.map((item, index) => <div className="todo-draft-row" key={`all-draft-${index}-${item.text}`}><span className="action-index">{String(index + 1).padStart(2, "0")}</span><div><strong>{item.title}</strong><span className="todo-description">{item.text}</span><span className="todo-row-meta">{item.carried ? "上周期未完成 · 延续跟进" : roleView === "store" ? "建议负责人：门店负责人 · 本周期" : "建议负责人：集团/区域负责人 · 本周期"}</span></div></div>)}{!dailyTodoDrafts.length && <div className="todo-empty"><strong>暂无待确认的行动建议</strong><span>工作台会展示最新一次经营诊断结果。</span></div>}</section>
+              </>}
             </div>
           )}
 
@@ -1475,9 +1523,10 @@ export default function Prototype() {
             <div className="page-stack subpage-stack">
               {roleView === "group" ? <header className="market-page-heading"><h1>市场</h1><p>管理团队与门店</p></header> : null}
               {roleView === "store" ? <>
-                <header className="market-page-heading"><h1>市场</h1><p>杭州延安店 · 门店代理与员工</p></header>
-                <section className="surface market-team-overview"><SectionHeading icon={<GroupIcon />} title="本店团队" action={<span className="demo-tag">T-1</span>} /><div className="group-product-summary"><div><span>代理</span><strong>{storeAgentRoster.length} 位</strong></div><div><span>员工</span><strong>{storeEmployeeRecords.length} 位</strong></div><div><span>本月销售</span><strong>{formatTeamMoney(storeEmployeeTeamSummary.salesYuan)}</strong></div></div></section>
-                {storeAgentRoster.map((agent) => <section className="surface market-section store-agent-section" key={agent.id}><SectionHeading icon={<GroupIcon />} title={agent.name} action={<span className="partner-result-count">代理 · {agent.employeeCount} 位员工</span>} /><p className="team-focus-helper">仅展示归属杭州延安店的代理及其员工经营数据。</p>{storeEmployeeRecords.filter((employee) => employee.agentName === agent.name).map((employee) => <button type="button" className="market-member-row" key={employee.id} onClick={() => openStoreEmployee(employee, "market")}><span className="avatar">{employee.name.slice(0, 1)}</span><span className="market-row-copy"><strong>{employee.name}</strong><span>{employee.position} · 订单 {employee.orderCount} 笔</span><small>复购 {employee.repeatRatePercent}% · 回访待跟进 {employee.callbackPending} 项</small></span><span className="market-member-sales"><b>{formatTeamMoney(employee.salesYuan)}</b><span>本月销售 · 目标 {employee.salesProgressPercent}%</span></span><ChevronRightIcon /></button>)}</section>)}
+                <header className="market-page-heading"><h1>市场</h1><p>杭州延安店 · 团队经营</p></header>
+                <section className="surface market-team-overview"><SectionHeading icon={<GroupIcon />} title="团队概览" action={<span className="demo-tag">T-1</span>} /><div className="group-product-summary"><div><span>团队成员</span><strong>{storeAgentRoster.length} 人</strong></div><div><span>本月销售</span><strong>{formatTeamMoney(storeAgentRoster.reduce((sum, agent) => sum + agent.salesYuan, 0))}</strong></div><div><span>目标达成</span><strong>{storeAgentRoster.length ? `${Math.round(storeAgentRoster.reduce((sum, agent) => sum + agent.salesYuan, 0) / storeAgentRoster.reduce((sum, agent) => sum + agent.targetYuan, 0) * 100)}%` : "—"}</strong></div></div></section>
+                {storeAgentRoster.map((agent) => { const member = teamRows.find((row) => row.name === agent.name); return <button type="button" className="surface store-agent-card" key={agent.id} onClick={() => member && openMember(member, false, true)}><span className="store-agent-card-head"><span className="avatar">{agent.name.slice(0, 1)}</span><span className="market-row-copy"><strong>{agent.name}</strong><span>团队成员 · 杭州延安店</span></span><span className="store-agent-progress">{Math.round(agent.salesYuan / agent.targetYuan * 100)}%<small>目标达成</small></span><ChevronRightIcon /></span><span className="store-agent-card-sales"><b>{formatTeamMoney(agent.salesYuan)}</b><span>销售目标 {formatTeamMoney(agent.targetYuan)}</span></span><span className="store-agent-card-metrics"><span>{agent.orderCount} 笔订单</span><span>新增顾客 {agent.newCustomers} 人</span><span>复购 {agent.repeatRatePercent}%</span></span></button>; })}
+                {!storeAgentRoster.length && <div className="surface partner-empty"><strong>暂时没有团队成员</strong><p>当前门店还没有关联可管理的团队成员。</p></div>}
               </> : <>
                 <div className="partner-type-tabs market-mode-tabs" role="tablist" aria-label="市场管理对象"><button role="tab" aria-selected={marketMode === "teams"} onClick={() => { keyboard.hide(); setMarketMode("teams"); }}>团队 <span>{managedTeams.length}</span></button><button role="tab" aria-selected={marketMode === "partners"} onClick={() => { keyboard.hide(); setPartnerSearch(""); setMarketMode("partners"); }}>门店 <span>{marketPartners.filter((item) => item.kind === "store").length}</span></button></div>
                 {marketMode === "teams" ? renderTeamDirectory() : <>
@@ -1501,7 +1550,15 @@ export default function Prototype() {
 
           {screen === "member-detail" && selectedMember && (
             <div className="page-stack subpage-stack member-detail-stack">
-              <SubpageHeader eyebrow="AGENT PERFORMANCE REVIEW" title={selectedMember.name} subtitle={`${selectedMember.district} · 数据截至昨日（T-1）`} onBack={() => setScreen(memberReturnScreen)} />
+              <SubpageHeader title={selectedMember.name} subtitle={`${selectedMember.district} · 数据截至昨日（T-1）`} onBack={() => setScreen(memberReturnScreen)} />
+              <section className="ai-panel member-ai-panel">
+                <div className="ai-panel-top"><div className="ai-heading"><span className="ai-glyph"><MagicWandIcon /></span><div><IconLabel>AI AGENT COACH</IconLabel><h2>组员经营分析与提升方案</h2></div></div><span className="live-pill"><i />基于个人数据</span></div>
+                <p className="ai-intro">AI 将综合业绩、客户复购、方案推送与团队活跃，给出优势、待提升事项、具体行动和阶段目标。</p>
+                {memberAiState === "loading" && <div className="ai-loading"><span className="loading-orb" />AI 正在分析组员经营数据…</div>}
+                {memberAiState === "error" && <div className="ai-error">{memberError}</div>}
+                {memberAiState === "success" && <div className="ai-answer member-analysis">{memberAnswer}</div>}
+                <button className="ai-primary" onClick={generateMemberAnalysis} disabled={memberAiState === "loading"}><MagicWandIcon />{memberAiState === "success" ? "重新生成个人分析" : memberAiState === "loading" ? "正在生成" : "生成组员经营分析"}<ArrowRightIcon /></button>
+              </section>
               <section className="surface member-overview">
                 <div className="member-overview-head"><span className="profile-avatar">{selectedMember.name.slice(0, 1)}</span><div><strong>本月业绩 {selectedMember.gmv}</strong><span>目标达成 {selectedMember.progress}% · {selectedMember.issue}</span></div></div>
                 <div className="member-kpi-grid">
@@ -1514,16 +1571,6 @@ export default function Prototype() {
                 </div>
                 <p className="dimension-note">业绩与服务表现由品牌经营数据汇总；代理层级及分账由第三方接口提供。</p>
               </section>
-              <section className="surface market-section"><SectionHeading icon={<GroupIcon />} title="团队与关联门店" />{managedTeams.filter((team) => team.memberNames.includes(selectedMember.name)).map((team) => <button className="market-row" key={team.id} onClick={() => openTeam(team.id)}><span className="market-row-copy"><strong>{team.name}</strong><span>负责人 {team.leader} · {team.memberNames.length} 位成员</span></span><ChevronRightIcon /></button>)}{memberDevelopment[selectedMember.name]?.partners.map((id) => <button className="market-row" key={id} onClick={() => openPartner(id)}><span className="market-row-copy"><strong>{marketPartners.find((partner) => partner.id === id)?.title}</strong><span>查看合作档案与经营表现</span></span><ChevronRightIcon /></button>)}</section>
-              <section className="ai-panel member-ai-panel">
-                <div className="ai-panel-top"><div className="ai-heading"><span className="ai-glyph"><MagicWandIcon /></span><div><IconLabel>AI AGENT COACH</IconLabel><h2>组员经营分析与提升方案</h2></div></div><span className="live-pill"><i />基于个人数据</span></div>
-                <p className="ai-intro">AI 将综合业绩、客户复购、方案推送与团队活跃，给出优势、待提升事项、具体行动和阶段目标。</p>
-                {memberAiState === "loading" && <div className="ai-loading"><span className="loading-orb" />AI 正在分析组员经营数据…</div>}
-                {memberAiState === "error" && <div className="ai-error">{memberError}</div>}
-                {memberAiState === "success" && <div className="ai-answer member-analysis">{memberAnswer}</div>}
-                <button className="ai-primary" onClick={generateMemberAnalysis} disabled={memberAiState === "loading"}><MagicWandIcon />{memberAiState === "success" ? "重新生成个人分析" : memberAiState === "loading" ? "正在生成" : "生成组员经营分析"}<ArrowRightIcon /></button>
-              </section>
-              {memberAiState === "success" && <button className="primary-button full" onClick={() => { setMemberGoalSaved(true); announce("阶段辅导目标已保存"); }} disabled={memberGoalSaved}>{memberGoalSaved ? "已保存为辅导目标" : "采纳并保存阶段目标"}<CheckCircledIcon /></button>}
               <footer className="prototype-note">AI 建议供管理者与组员沟通确认，目标期限和责任分工可调整。</footer>
             </div>
           )}
@@ -1531,10 +1578,10 @@ export default function Prototype() {
           {screen === "store-employee-detail" && selectedStoreEmployee && (
             <div className="page-stack subpage-stack member-detail-stack">
               <SubpageHeader eyebrow="STORE EMPLOYEE REVIEW" title={selectedStoreEmployee.name} subtitle={`${selectedStoreEmployee.position} · 杭州延安店 · T-1`} onBack={() => setScreen(storeEmployeeReturnScreen)} />
-              <section className="surface member-overview"><div className="member-overview-head"><span className="profile-avatar">{selectedStoreEmployee.name.slice(0, 1)}</span><div><strong>{selectedStoreEmployee.agentName} · 门店代理</strong><span>员工经营数据按本店订单、顾客服务及方案记录汇总</span></div></div><div className="member-kpi-grid">{[["本月销售额", formatTeamMoney(selectedStoreEmployee.salesYuan)], ["目标达成", `${selectedStoreEmployee.salesProgressPercent}%`], ["订单 / 客单", `${selectedStoreEmployee.orderCount} 笔 · ¥${selectedStoreEmployee.averageOrderYuan}`], ["新增顾客", `${selectedStoreEmployee.newCustomers} 人`], ["复购顾客", `${selectedStoreEmployee.repeatBuyers} / ${selectedStoreEmployee.repeatEligible} 人 · ${selectedStoreEmployee.repeatRatePercent}%`], ["回访进度", `完成 ${selectedStoreEmployee.callbackCompleted} · 待跟进 ${selectedStoreEmployee.callbackPending}`], ["方案执行中", `${selectedStoreEmployee.healthPlansExecuting} 位`], ["方案待更新", `${selectedStoreEmployee.healthPlansDue} 位`]].map(([label, value]) => <div key={label}><span>{label}</span><strong>{value}</strong></div>)}</div></section>
-              <section className="ai-panel member-ai-panel"><div className="ai-panel-top"><div className="ai-heading"><span className="ai-glyph"><MagicWandIcon /></span><div><IconLabel>AI STORE TEAM COACH</IconLabel><h2>员工经营分析与提升方案</h2></div></div><span className="live-pill"><i />基于个人数据</span></div><p className="ai-intro">结合业绩、订单、复购、回访和方案跟进，分析做得好的方面、待提升事项、可执行动作及阶段目标。</p>{storeEmployeeAiState === "loading" && <div className="ai-loading"><span className="loading-orb" />AI 正在分析员工经营数据…</div>}{storeEmployeeAiState === "error" && <div className="ai-error">{storeEmployeeError}</div>}{storeEmployeeAiState === "success" && <div className="ai-answer member-analysis">{storeEmployeeAnswer}</div>}<button className="ai-primary" onClick={generateStoreEmployeeAnalysis} disabled={storeEmployeeAiState === "loading"}><MagicWandIcon />{storeEmployeeAiState === "success" ? "重新生成员工分析" : storeEmployeeAiState === "loading" ? "正在生成" : "生成员工经营分析"}<ArrowRightIcon /></button></section>
-              {storeEmployeeAiState === "success" && <button className="primary-button full" onClick={() => { setMemberGoalSaved(true); announce("员工阶段目标已保存"); }} disabled={memberGoalSaved}>{memberGoalSaved ? "已保存为辅导目标" : "采纳并保存阶段目标"}<CheckCircledIcon /></button>}
-              <footer className="prototype-note">经营建议由负责人确认后作为辅导目标；员工销售及服务指标来自本店模拟业务记录。</footer>
+              <section className="surface store-employee-summary"><div className="store-employee-summary-top"><div><span>本月销售</span><strong>{formatTeamMoney(selectedStoreEmployee.salesYuan)}</strong></div><span className="store-employee-attainment">{selectedStoreEmployee.salesProgressPercent}%<small>目标达成</small></span></div><div className="store-employee-progress" role="progressbar" aria-label="销售目标完成进度" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.min(selectedStoreEmployee.salesProgressPercent, 100)}><span style={{ width: `${Math.min(selectedStoreEmployee.salesProgressPercent, 100)}%` }} /></div><div className="store-employee-summary-foot"><span>目标 {formatTeamMoney(selectedStoreEmployee.salesTargetYuan)}</span><span>所属代理 {selectedStoreEmployee.agentName}</span></div></section>
+              <section className="ai-panel member-ai-panel store-employee-ai"><div className="ai-panel-top"><div className="ai-heading"><span className="ai-glyph"><MagicWandIcon /></span><div><IconLabel>AI 员工辅导</IconLabel><h2>经营分析与提升建议</h2></div></div><span className="live-pill"><i />T-1 数据</span></div>{storeEmployeeAiState === "loading" && <div className="ai-loading"><span className="loading-orb" />正在分析业绩与顾客跟进情况…</div>}{storeEmployeeAiState === "error" && <div className="ai-error">{storeEmployeeError}</div>}{storeEmployeeAiState === "success" && <div className="ai-answer member-analysis">{storeEmployeeAnswer}</div>}<button className="ai-primary" onClick={generateStoreEmployeeAnalysis} disabled={storeEmployeeAiState === "loading"}><MagicWandIcon />{storeEmployeeAiState === "success" ? "重新生成分析" : storeEmployeeAiState === "loading" ? "正在生成" : "生成员工分析"}<ArrowRightIcon /></button>{storeEmployeeAiState === "success" && <button className="store-employee-save-goal" onClick={() => { setMemberGoalSaved(true); announce("员工阶段目标已保存"); }} disabled={memberGoalSaved}>{memberGoalSaved ? "已保存为辅导目标" : "采纳并保存阶段目标"}<CheckCircledIcon /></button>}</section>
+              <section className="surface store-employee-dimension"><SectionHeading icon={<BarChartIcon />} title="业绩表现" /><div className="store-employee-metrics"><div><span>订单量</span><strong>{selectedStoreEmployee.orderCount} 笔</strong></div><div><span>平均客单</span><strong>¥{selectedStoreEmployee.averageOrderYuan}</strong></div><div><span>新增顾客</span><strong>{selectedStoreEmployee.newCustomers} 人</strong></div><div><span>复购顾客</span><strong>{selectedStoreEmployee.repeatBuyers} / {selectedStoreEmployee.repeatEligible} 人</strong><small>复购率 {selectedStoreEmployee.repeatRatePercent}%</small></div></div></section>
+              <section className="surface store-employee-dimension"><SectionHeading icon={<HeartIcon />} title="顾客服务" /><div className="store-employee-metrics"><div><span>回访完成</span><strong>{selectedStoreEmployee.callbackCompleted} 项</strong></div><div className={selectedStoreEmployee.callbackPending ? "is-attention" : ""}><span>待跟进回访</span><strong>{selectedStoreEmployee.callbackPending} 项</strong></div><div><span>方案执行中</span><strong>{selectedStoreEmployee.healthPlansExecuting} 位</strong></div><div className={selectedStoreEmployee.healthPlansDue ? "is-attention" : ""}><span>方案待更新</span><strong>{selectedStoreEmployee.healthPlansDue} 位</strong></div></div></section>
             </div>
           )}
 
@@ -1558,7 +1605,7 @@ export default function Prototype() {
         </main>
       </MobileScroll>
 
-      {(screen === "workbench" || screen === "todos") && !todoConfirmed && <div className="workbench-action-dock">
+      {(screen === "workbench" || (screen === "todos" && todoListScope === "business")) && !todoConfirmed && <div className="workbench-action-dock">
         <span>{businessState === "success" ? `确认本期诊断建议 · ${dailyTodoDrafts.length} 项待办` : "诊断生成后可确认本期待办"}</span>
         <button className="primary-button" disabled={businessState !== "success" || !dailyTodoDrafts.length} onClick={confirmBusinessTodos}>{dailyTodoDrafts.length ? `确认生成 ${dailyTodoDrafts.length} 项` : "暂无待办建议"}<ArrowRightIcon /></button>
       </div>}
